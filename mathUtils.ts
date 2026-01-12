@@ -3,6 +3,7 @@ import { BSMInputs, BSMOutputs } from './types';
 
 /**
  * Standard Normal Cumulative Distribution Function approximation
+ * Matches the precision used in most financial libraries.
  */
 export function normCdf(x: number): number {
   const t = 1 / (1 + 0.2316419 * Math.abs(x));
@@ -19,7 +20,8 @@ export function normPdf(x: number): number {
 }
 
 /**
- * Client-side fallback calculation for smooth 3D surfaces
+ * BSM Calculation aligned with the provided Python script.
+ * Greeks are scaled: Vega/100, Rho/100, Theta/Day.
  */
 export function calculateBSM(inputs: BSMInputs): BSMOutputs {
   const { spot: S, strike: K, riskFreeRate: r, dividendYield: q, volatility: v, optionType, expiryDate } = inputs;
@@ -27,8 +29,11 @@ export function calculateBSM(inputs: BSMInputs): BSMOutputs {
   const today = new Date();
   const expiry = new Date(expiryDate);
   const diffTime = expiry.getTime() - today.getTime();
-  const T = Math.max(diffTime / (1000 * 60 * 60 * 24 * 365.25), 0.0001);
+  const totalDays = diffTime / (1000 * 60 * 60 * 24);
+  const T = Math.max(totalDays / 365.25, 0.0001);
 
+  // D1 calculation from Python script: (math.log(S/K) + (r + vol**2/2)* T) / (vol * math.sqrt(T))
+  // We include q (dividend yield) for a more complete model as per inputs
   const d1 = (Math.log(S / K) + (r - q + (v * v) / 2) * T) / (v * Math.sqrt(T));
   const d2 = d1 - v * Math.sqrt(T);
 
@@ -39,21 +44,35 @@ export function calculateBSM(inputs: BSMInputs): BSMOutputs {
   let theta: number;
   let rho: number;
 
-  const daysInYear = 365.25;
-
   if (optionType === 'call') {
+    // Call Price: S * exp(-qT) * N(d1) - K * exp(-rT) * N(d2)
     price = S * Math.exp(-q * T) * normCdf(d1) - K * Math.exp(-r * T) * normCdf(d2);
+    // Call Delta: exp(-qT) * N(d1)
     delta = Math.exp(-q * T) * normCdf(d1);
+    // Call Rho: (K * T * exp(-rT) * N(d2)) / 100
     rho = (K * T * Math.exp(-r * T) * normCdf(d2)) / 100;
-    theta = (-(S * Math.exp(-q * T) * v * normPdf(d1)) / (2 * Math.sqrt(T)) - r * K * Math.exp(-r * T) * normCdf(d2) + q * S * Math.exp(-q * T) * normCdf(d1)) / daysInYear;
+    // Call Theta (per day scaling as per Python script)
+    const term1 = -(S * Math.exp(-q * T) * v * normPdf(d1)) / (2 * Math.sqrt(T));
+    const term2 = - r * K * Math.exp(-r * T) * normCdf(d2);
+    const term3 = q * S * Math.exp(-q * T) * normCdf(d1);
+    theta = (term1 + term2 + term3) / 365.25;
   } else {
+    // Put Price: K * exp(-rT) * N(-d2) - S * exp(-qT) * N(-d1)
     price = K * Math.exp(-r * T) * normCdf(-d2) - S * Math.exp(-q * T) * normCdf(-d1);
+    // Put Delta: -exp(-qT) * N(-d1)
     delta = -Math.exp(-q * T) * normCdf(-d1);
+    // Put Rho: (-K * T * exp(-rT) * N(-d2)) / 100
     rho = (-K * T * Math.exp(-r * T) * normCdf(-d2)) / 100;
-    theta = (-(S * Math.exp(-q * T) * v * normPdf(d1)) / (2 * Math.sqrt(T)) + r * K * Math.exp(-r * T) * normCdf(-d2) - q * S * Math.exp(-q * T) * normCdf(-d1)) / daysInYear;
+    // Put Theta (per day scaling)
+    const term1 = -(S * Math.exp(-q * T) * v * normPdf(d1)) / (2 * Math.sqrt(T));
+    const term2 = r * K * Math.exp(-r * T) * normCdf(-d2);
+    const term3 = - q * S * Math.exp(-q * T) * normCdf(-d1);
+    theta = (term1 + term2 + term3) / 365.25;
   }
 
+  // Gamma: N'(d1) * exp(-qT) / (S * v * sqrt(T))
   gamma = (normPdf(d1) * Math.exp(-q * T)) / (S * v * Math.sqrt(T));
+  // Vega (per 1% change as per Python script): (S * exp(-qT) * N'(d1) * sqrt(T)) / 100
   vega = (S * Math.exp(-q * T) * normPdf(d1) * Math.sqrt(T)) / 100;
 
   return { price, delta, gamma, vega, theta, rho, timeToExpiry: T };
@@ -63,8 +82,10 @@ export function generateSurfaceData(
   greek: 'delta' | 'gamma' | 'theta' | 'vega',
   inputs: BSMInputs
 ): { x: number[]; y: number[]; z: number[][] } {
-  const steps = 30;
-  const spotRange = Array.from({ length: steps }, (_, i) => inputs.spot * (0.7 + (i * 0.6) / steps));
+  const steps = 25;
+  // S range from 85% to 115% as per Python script
+  const spotRange = Array.from({ length: steps }, (_, i) => inputs.spot * (0.85 + (i * 0.3) / steps));
+  // T range from 0 to 1 year
   const timeRange = Array.from({ length: steps }, (_, i) => (i + 1) / steps);
 
   const z: number[][] = [];
@@ -85,8 +106,10 @@ export function generateHeatmapData(
   inputs: BSMInputs
 ): { x: string[]; y: string[]; z: number[][] } {
   const steps = 12;
-  const volRange = Array.from({ length: steps }, (_, i) => inputs.volatility * (0.6 + (i / steps) * 1.4));
-  const spotRange = Array.from({ length: steps }, (_, i) => inputs.spot * (0.8 + (i / steps) * 0.4));
+  // Vol range from 25% to 400% of baseline as per Python script
+  const volRange = Array.from({ length: steps }, (_, i) => inputs.volatility * (0.25 + (i / steps) * 3.75));
+  // Spot range from 90% to 120% as per Python script
+  const spotRange = Array.from({ length: steps }, (_, i) => inputs.spot * (0.9 + (i / steps) * 0.3));
 
   const z: number[][] = [];
   const xLabels = spotRange.map(s => `₹${s.toFixed(0)}`);

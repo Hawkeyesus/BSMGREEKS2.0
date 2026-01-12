@@ -1,0 +1,10 @@
+streamlit
+plotly
+numpy
+scipy
+pandas
+yfinance
+numpy
+matplotlib
+mplfinance 
+

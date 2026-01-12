@@ -47,44 +47,43 @@ const App = () => {
     heatmap: useRef<HTMLDivElement>(null),
   };
 
-  // Sync with Python Backend
-  useEffect(() => {
-    const syncBackend = async () => {
-      setIsSyncing(true);
-      try {
-        const response = await fetch('/api/calculate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ticker: inputs.ticker,
-            strike_price: inputs.strike,
-            spot_price: inputs.spot,
-            expiry_date: inputs.expiryDate,
-            risk_free_rate: inputs.riskFreeRate,
-            dividend_yield: inputs.dividendYield,
-            option_type: inputs.optionType
-          }),
-        });
-        if (response.ok) {
-          const data: BackendResponse = await response.json();
-          setBackendData(data);
-          // If backend calculates a specific volatility, we keep it in the input state for 3D visualization baselines
-          if (data.historical_volatility) {
-            setInputs(prev => ({ ...prev, volatility: data.historical_volatility }));
-          }
+  const syncBackend = async () => {
+    setIsSyncing(true);
+    try {
+      const response = await fetch('/api/calculate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ticker: inputs.ticker,
+          strike_price: inputs.strike,
+          spot_price: inputs.spot,
+          expiry_date: inputs.expiryDate,
+          risk_free_rate: inputs.riskFreeRate,
+          dividend_yield: inputs.dividendYield,
+          option_type: inputs.optionType
+        }),
+      });
+      if (response.ok) {
+        const data: BackendResponse = await response.json();
+        setBackendData(data);
+        // Sync local volatility for surface visualizations
+        if (data.historical_volatility) {
+          setInputs(prev => ({ ...prev, volatility: data.historical_volatility }));
         }
-      } catch (error) {
-        console.error("Backend communication error:", error);
-      } finally {
-        setIsSyncing(false);
       }
-    };
+    } catch (error) {
+      console.error("Backend communication error:", error);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
-    const timer = setTimeout(syncBackend, 400); // Debounce for user typing
-    return () => clearTimeout(timer);
-  }, [inputs.ticker, inputs.strike, inputs.spot, inputs.expiryDate, inputs.riskFreeRate, inputs.dividendYield, inputs.optionType]);
+  // Initial load
+  useEffect(() => {
+    syncBackend();
+  }, []);
 
-  // Handle Graph Rendering
+  // Handle Graph Rendering whenever backendData or inputs change
   useEffect(() => {
     if (!backendData) return;
 
@@ -115,7 +114,7 @@ const App = () => {
           showscale: false
         }], {
           ...commonLayout,
-          title: { text: `3D ${greek.charAt(0).toUpperCase() + greek.slice(1)}`, font: { size: 12, color: '#e4e4e7' } }
+          title: { text: `3D ${greek.charAt(0).toUpperCase() + greek.slice(1)} Surface`, font: { size: 12, color: '#e4e4e7' } }
         }, { responsive: true, displayModeBar: false });
       }
     });
@@ -137,7 +136,7 @@ const App = () => {
         margin: { l: 60, r: 20, b: 50, t: 40 }
       }, { responsive: true, displayModeBar: false });
     }
-  }, [backendData, inputs]);
+  }, [backendData]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
@@ -150,64 +149,76 @@ const App = () => {
   return (
     <div className="flex flex-col lg:flex-row min-h-screen bg-[#09090b] text-zinc-100">
       {/* Input Sidebar */}
-      <aside className="w-full lg:w-80 border-r border-zinc-800 bg-zinc-900/20 p-6 flex flex-col gap-6 overflow-y-auto">
+      <aside className="w-full lg:w-80 border-r border-zinc-800 bg-zinc-900/20 p-6 flex flex-col gap-6 overflow-y-auto shrink-0">
         <div>
           <h1 className="text-xl font-black tracking-tighter text-white mb-1">GREEKS PRO</h1>
           <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest">Black-Scholes Analytics</p>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-4 flex-1">
           <div className="flex flex-col gap-1">
             <label className="text-zinc-500 text-[9px] font-bold uppercase tracking-wider">Stock Ticker</label>
-            <input name="ticker" value={inputs.ticker} onChange={handleInputChange} className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-emerald-500 outline-none transition-all" />
+            <input name="ticker" value={inputs.ticker} onChange={handleInputChange} className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-emerald-500 outline-none transition-all w-full" />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1">
               <label className="text-zinc-500 text-[9px] font-bold uppercase tracking-wider">Spot Price (₹)</label>
-              <input type="number" name="spot" value={inputs.spot} onChange={handleInputChange} className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-emerald-500 outline-none transition-all" />
+              <input type="number" name="spot" value={inputs.spot} onChange={handleInputChange} className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-emerald-500 outline-none transition-all w-full" />
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-zinc-500 text-[9px] font-bold uppercase tracking-wider">Strike Price (₹)</label>
-              <input type="number" name="strike" value={inputs.strike} onChange={handleInputChange} className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-emerald-500 outline-none transition-all" />
+              <input type="number" name="strike" value={inputs.strike} onChange={handleInputChange} className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-emerald-500 outline-none transition-all w-full" />
             </div>
           </div>
 
           <div className="flex flex-col gap-1">
             <label className="text-zinc-500 text-[9px] font-bold uppercase tracking-wider">Expiry Date</label>
-            <input type="date" name="expiryDate" value={inputs.expiryDate} onChange={handleInputChange} className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-emerald-500 outline-none transition-all" />
+            <input type="date" name="expiryDate" value={inputs.expiryDate} onChange={handleInputChange} className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-emerald-500 outline-none transition-all w-full" />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1">
               <label className="text-zinc-500 text-[9px] font-bold uppercase tracking-wider">Risk Free (%)</label>
-              <input type="number" step="0.001" name="riskFreeRate" value={inputs.riskFreeRate} onChange={handleInputChange} className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-emerald-500 outline-none transition-all" />
+              <input type="number" step="0.001" name="riskFreeRate" value={inputs.riskFreeRate} onChange={handleInputChange} className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-emerald-500 outline-none transition-all w-full" />
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-zinc-500 text-[9px] font-bold uppercase tracking-wider">Dividend (%)</label>
-              <input type="number" step="0.001" name="dividendYield" value={inputs.dividendYield} onChange={handleInputChange} className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-emerald-500 outline-none transition-all" />
+              <input type="number" step="0.001" name="dividendYield" value={inputs.dividendYield} onChange={handleInputChange} className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-emerald-500 outline-none transition-all w-full" />
             </div>
           </div>
 
           <div className="flex flex-col gap-1">
             <label className="text-zinc-500 text-[9px] font-bold uppercase tracking-wider">Option Type</label>
-            <select name="optionType" value={inputs.optionType} onChange={handleInputChange} className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-3 py-2 text-sm appearance-none focus:ring-1 focus:ring-emerald-500 outline-none cursor-pointer">
+            <select name="optionType" value={inputs.optionType} onChange={handleInputChange} className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-3 py-2 text-sm appearance-none focus:ring-1 focus:ring-emerald-500 outline-none cursor-pointer w-full">
               <option value="call">Call Option (CE)</option>
               <option value="put">Put Option (PE)</option>
             </select>
           </div>
         </div>
 
-        <div className="mt-auto pt-6 border-t border-zinc-800">
-           {isSyncing ? (
-             <div className="flex items-center gap-2 text-[10px] text-emerald-500 font-bold animate-pulse">
-               <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></div>
-               CALCULATING...
+        <div className="mt-6 pt-6 border-t border-zinc-800 space-y-4">
+           <button 
+             onClick={syncBackend}
+             disabled={isSyncing}
+             className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-emerald-900/20 uppercase tracking-widest text-xs flex items-center justify-center gap-2"
+           >
+             {isSyncing ? (
+               <>
+                 <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                 Calculating...
+               </>
+             ) : (
+               'Calculate'
+             )}
+           </button>
+           
+           <div className="flex flex-col gap-1">
+             <div className={`text-[10px] font-bold transition-colors ${isSyncing ? 'text-emerald-500 animate-pulse' : 'text-zinc-600'}`}>
+               {isSyncing ? 'SYNCING ENGINE...' : 'ENGINE READY'}
              </div>
-           ) : (
-             <div className="text-[10px] text-zinc-600 font-bold">ENGINE READY</div>
-           )}
-           <p className="text-zinc-500 text-[10px] mt-2">Historical volatility and Greeks are derived from the connected Python model.</p>
+             <p className="text-zinc-500 text-[10px]">All results, including historical volatility and time decay, are processed by your Python backend model.</p>
+           </div>
         </div>
       </aside>
 
@@ -227,34 +238,34 @@ const App = () => {
             <Card 
               title="Historical Volatility" 
               value={backendData ? `${(backendData.historical_volatility * 100).toFixed(2)}%` : '---'} 
-              subtext="Realized volatility from backend"
+              subtext="Calculated from your model"
             />
           </div>
           <div className="md:col-span-2">
             <Card 
-              title="Time to Expiry" 
+              title="Time Left to Expiry" 
               value={backendData ? backendData.time_to_expiry : '---'} 
-              subtext="Duration until maturity"
+              subtext="Engine-calculated duration"
             />
           </div>
-          <Card title="Delta (Δ)" value={backendData ? backendData.delta.toFixed(4) : '---'} subtext="Δ Price / Δ Spot" />
-          <Card title="Gamma (Γ)" value={backendData ? backendData.gamma.toFixed(4) : '---'} subtext="Δ Delta / Δ Spot" />
-          <Card title="Vega (ν)" value={backendData ? backendData.vega.toFixed(4) : '---'} subtext="Δ Price / Δ Vol" />
-          <Card title="Theta (Θ)" value={backendData ? backendData.theta.toFixed(4) : '---'} subtext="Time Decay" />
-          <Card title="Rho (ρ)" value={backendData ? backendData.rho.toFixed(4) : '---'} subtext="Interest Sensitivity" />
+          <Card title="Delta (Δ)" value={backendData ? backendData.delta.toFixed(4) : '---'} subtext="Spot Sensitivity" />
+          <Card title="Gamma (Γ)" value={backendData ? backendData.gamma.toFixed(4) : '---'} subtext="Delta Sensitivity" />
+          <Card title="Vega (ν)" value={backendData ? backendData.vega.toFixed(4) : '---'} subtext="Vol Sensitivity" />
+          <Card title="Theta (Θ)" value={backendData ? backendData.theta.toFixed(4) : '---'} subtext="Time Sensitivity" />
+          <Card title="Rho (ρ)" value={backendData ? backendData.rho.toFixed(4) : '---'} subtext="Rate Sensitivity" />
           <Card title="Intrinsic Val" value={backendData ? `₹${Math.max(0, inputs.optionType === 'call' ? inputs.spot - inputs.strike : inputs.strike - inputs.spot).toFixed(2)}` : '---'} />
         </section>
 
         {/* 3D Visualizations */}
         <section className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-3 min-h-[380px]" ref={chartsRef.delta}></div>
-          <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-3 min-h-[380px]" ref={chartsRef.gamma}></div>
-          <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-3 min-h-[380px]" ref={chartsRef.theta}></div>
-          <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-3 min-h-[380px]" ref={chartsRef.vega}></div>
+          <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-3 min-h-[400px] shadow-lg shadow-black/40" ref={chartsRef.delta}></div>
+          <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-3 min-h-[400px] shadow-lg shadow-black/40" ref={chartsRef.gamma}></div>
+          <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-3 min-h-[400px] shadow-lg shadow-black/40" ref={chartsRef.theta}></div>
+          <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-3 min-h-[400px] shadow-lg shadow-black/40" ref={chartsRef.vega}></div>
         </section>
 
         {/* Sensitivity Heatmap */}
-        <section className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-4 min-h-[480px]" ref={chartsRef.heatmap}></section>
+        <section className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-4 min-h-[500px] shadow-lg shadow-black/40" ref={chartsRef.heatmap}></section>
       </main>
     </div>
   );

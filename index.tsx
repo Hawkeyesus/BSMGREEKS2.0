@@ -50,7 +50,6 @@ const App = () => {
   const syncBackend = async () => {
     setIsSyncing(true);
     try {
-      // Calling your Python-powered backend
       const response = await fetch('/api/calculate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -67,24 +66,24 @@ const App = () => {
       if (response.ok) {
         const data: BackendResponse = await response.json();
         setBackendData(data);
-        // Sync baseline volatility for front-end 3D surface visualizations
+        // Sync local volatility for surface visualizations
         if (data.historical_volatility) {
           setInputs(prev => ({ ...prev, volatility: data.historical_volatility }));
         }
       }
     } catch (error) {
-      console.error("Engine calculation error:", error);
+      console.error("Backend communication error:", error);
     } finally {
       setIsSyncing(false);
     }
   };
 
-  // Initial calculation on mount
+  // Initial load
   useEffect(() => {
     syncBackend();
   }, []);
 
-  // Update Graphs when backend data refreshes
+  // Handle Graph Rendering whenever backendData or inputs change
   useEffect(() => {
     if (!backendData) return;
 
@@ -93,12 +92,12 @@ const App = () => {
       paper_bgcolor: 'rgba(0,0,0,0)',
       plot_bgcolor: 'rgba(0,0,0,0)',
       font: { color: '#71717a', size: 10 },
-      margin: { l: 0, r: 0, b: 0, t: 40 },
+      margin: { l: 0, r: 0, b: 0, t: 30 },
       scene: {
-        xaxis: { title: 'Spot (₹)', gridcolor: '#27272a' },
-        yaxis: { title: 'Time (Y)', gridcolor: '#27272a' },
+        xaxis: { title: 'Spot Price (₹)', gridcolor: '#27272a' },
+        yaxis: { title: 'Time (Years)', gridcolor: '#27272a' },
         zaxis: { gridcolor: '#27272a' },
-        camera: { eye: { x: 1.4, y: 1.4, z: 1.1 } }
+        camera: { eye: { x: 1.5, y: 1.5, z: 1.2 } }
       }
     };
 
@@ -131,10 +130,10 @@ const App = () => {
         reversescale: true,
       }], {
         ...commonLayout,
-        title: { text: 'Price Sensitivity: Spot Price vs Volatility', font: { size: 14, color: '#e4e4e7' } },
-        xaxis: { title: 'Spot Price (₹)' },
-        yaxis: { title: 'Historical Volatility (σ)' },
-        margin: { l: 70, r: 20, b: 60, t: 50 }
+        title: { text: 'Price Sensitivity: Spot vs Volatility', font: { size: 14, color: '#e4e4e7' } },
+        xaxis: { title: 'Underlying Spot (₹)' },
+        yaxis: { title: 'Volatility (σ)' },
+        margin: { l: 60, r: 20, b: 50, t: 40 }
       }, { responsive: true, displayModeBar: false });
     }
   }, [backendData]);
@@ -148,130 +147,125 @@ const App = () => {
   };
 
   return (
-    <div className="flex flex-col lg:flex-row min-h-screen bg-[#070708] text-zinc-100 selection:bg-emerald-500/30">
-      {/* Sidebar Controls */}
-      <aside className="w-full lg:w-80 border-r border-zinc-800 bg-zinc-900/30 p-6 flex flex-col gap-6 overflow-y-auto shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center font-bold text-lg shadow-lg shadow-emerald-900/20">Σ</div>
-          <div>
-            <h1 className="text-lg font-black tracking-tight leading-none">GREEKS PRO</h1>
-            <span className="text-[10px] text-emerald-500 font-bold tracking-widest uppercase">NSE/BSE Engine</span>
-          </div>
+    <div className="flex flex-col lg:flex-row min-h-screen bg-[#09090b] text-zinc-100">
+      {/* Input Sidebar */}
+      <aside className="w-full lg:w-80 border-r border-zinc-800 bg-zinc-900/20 p-6 flex flex-col gap-6 overflow-y-auto shrink-0">
+        <div>
+          <h1 className="text-xl font-black tracking-tighter text-white mb-1">GREEKS PRO</h1>
+          <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest">Black-Scholes Analytics</p>
         </div>
 
         <div className="space-y-4 flex-1">
-          <div className="flex flex-col gap-1.5">
-            <label className="text-zinc-500 text-[9px] font-bold uppercase tracking-widest">Ticker Symbol</label>
-            <input name="ticker" value={inputs.ticker} onChange={handleInputChange} className="bg-zinc-800/80 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 outline-none transition-all w-full text-zinc-100" />
+          <div className="flex flex-col gap-1">
+            <label className="text-zinc-500 text-[9px] font-bold uppercase tracking-wider">Stock Ticker</label>
+            <input name="ticker" value={inputs.ticker} onChange={handleInputChange} className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-emerald-500 outline-none transition-all w-full" />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-zinc-500 text-[9px] font-bold uppercase tracking-widest">Spot Price (₹)</label>
-              <input type="number" name="spot" value={inputs.spot} onChange={handleInputChange} className="bg-zinc-800/80 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500/50 outline-none w-full" />
+            <div className="flex flex-col gap-1">
+              <label className="text-zinc-500 text-[9px] font-bold uppercase tracking-wider">Spot Price (₹)</label>
+              <input type="number" name="spot" value={inputs.spot} onChange={handleInputChange} className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-emerald-500 outline-none transition-all w-full" />
             </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-zinc-500 text-[9px] font-bold uppercase tracking-widest">Strike (₹)</label>
-              <input type="number" name="strike" value={inputs.strike} onChange={handleInputChange} className="bg-zinc-800/80 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500/50 outline-none w-full" />
+            <div className="flex flex-col gap-1">
+              <label className="text-zinc-500 text-[9px] font-bold uppercase tracking-wider">Strike Price (₹)</label>
+              <input type="number" name="strike" value={inputs.strike} onChange={handleInputChange} className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-emerald-500 outline-none transition-all w-full" />
             </div>
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <label className="text-zinc-500 text-[9px] font-bold uppercase tracking-widest">Expiry Date</label>
-            <input type="date" name="expiryDate" value={inputs.expiryDate} onChange={handleInputChange} className="bg-zinc-800/80 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500/50 outline-none w-full" />
+          <div className="flex flex-col gap-1">
+            <label className="text-zinc-500 text-[9px] font-bold uppercase tracking-wider">Expiry Date</label>
+            <input type="date" name="expiryDate" value={inputs.expiryDate} onChange={handleInputChange} className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-emerald-500 outline-none transition-all w-full" />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-zinc-500 text-[9px] font-bold uppercase tracking-widest">Risk Free (%)</label>
-              <input type="number" step="0.001" name="riskFreeRate" value={inputs.riskFreeRate} onChange={handleInputChange} className="bg-zinc-800/80 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500/50 outline-none w-full" />
+            <div className="flex flex-col gap-1">
+              <label className="text-zinc-500 text-[9px] font-bold uppercase tracking-wider">Risk Free (%)</label>
+              <input type="number" step="0.001" name="riskFreeRate" value={inputs.riskFreeRate} onChange={handleInputChange} className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-emerald-500 outline-none transition-all w-full" />
             </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-zinc-500 text-[9px] font-bold uppercase tracking-widest">Dividend (%)</label>
-              <input type="number" step="0.001" name="dividendYield" value={inputs.dividendYield} onChange={handleInputChange} className="bg-zinc-800/80 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500/50 outline-none w-full" />
+            <div className="flex flex-col gap-1">
+              <label className="text-zinc-500 text-[9px] font-bold uppercase tracking-wider">Dividend (%)</label>
+              <input type="number" step="0.001" name="dividendYield" value={inputs.dividendYield} onChange={handleInputChange} className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-emerald-500 outline-none transition-all w-full" />
             </div>
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <label className="text-zinc-500 text-[9px] font-bold uppercase tracking-widest">Option Class</label>
-            <select name="optionType" value={inputs.optionType} onChange={handleInputChange} className="bg-zinc-800/80 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm appearance-none focus:ring-2 focus:ring-emerald-500/50 outline-none cursor-pointer w-full">
+          <div className="flex flex-col gap-1">
+            <label className="text-zinc-500 text-[9px] font-bold uppercase tracking-wider">Option Type</label>
+            <select name="optionType" value={inputs.optionType} onChange={handleInputChange} className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-3 py-2 text-sm appearance-none focus:ring-1 focus:ring-emerald-500 outline-none cursor-pointer w-full">
               <option value="call">Call Option (CE)</option>
               <option value="put">Put Option (PE)</option>
             </select>
           </div>
         </div>
 
-        <div className="mt-6 pt-6 border-t border-zinc-800/50 space-y-5">
+        <div className="mt-6 pt-6 border-t border-zinc-800 space-y-4">
            <button 
              onClick={syncBackend}
              disabled={isSyncing}
-             className="w-full bg-emerald-600 hover:bg-emerald-500 active:scale-95 disabled:bg-zinc-800 disabled:text-zinc-600 disabled:scale-100 text-white font-bold py-3.5 rounded-xl transition-all shadow-xl shadow-emerald-950/20 uppercase tracking-[0.2em] text-[10px] flex items-center justify-center gap-3 border border-emerald-500/30"
+             className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-emerald-900/20 uppercase tracking-widest text-xs flex items-center justify-center gap-2"
            >
              {isSyncing ? (
                <>
                  <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                 Crunching Data...
+                 Calculating...
                </>
              ) : (
-               'Calculate Greeks'
+               'Calculate'
              )}
            </button>
            
-           <div className="flex flex-col gap-2">
-             <div className={`text-[9px] font-black tracking-widest transition-colors ${isSyncing ? 'text-emerald-500 animate-pulse' : 'text-zinc-600'}`}>
-               {isSyncing ? 'PYTHON ENGINE ACTIVE' : 'ENGINE READY'}
+           <div className="flex flex-col gap-1">
+             <div className={`text-[10px] font-bold transition-colors ${isSyncing ? 'text-emerald-500 animate-pulse' : 'text-zinc-600'}`}>
+               {isSyncing ? 'SYNCING ENGINE...' : 'ENGINE READY'}
              </div>
-             <p className="text-zinc-600 text-[10px] leading-relaxed">
-               Values for <strong>Historical Volatility</strong> and <strong>Time Decay</strong> are calculated by the BSM engine using actual historical price data.
-             </p>
+             <p className="text-zinc-500 text-[10px]">All results, including historical volatility and time decay, are processed by your Python backend model.</p>
            </div>
         </div>
       </aside>
 
-      {/* Analytics Dashboard */}
-      <main className="flex-1 p-6 lg:p-10 overflow-y-auto">
-        {/* Metric Header Grid */}
-        <section className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-5 mb-10">
+      {/* Main Content Area */}
+      <main className="flex-1 p-6 overflow-y-auto bg-zinc-950">
+        {/* Metric Grid */}
+        <section className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-4 mb-8">
           <div className="md:col-span-2">
             <Card 
-              title="Fair Market Price" 
+              title="Fair Price" 
               value={backendData ? `₹${backendData.fair_price.toFixed(2)}` : '---'} 
               highlight={true} 
-              subtext="Theoretical BSM Valuation"
+              subtext="Theoretical Black-Scholes Value"
             />
           </div>
           <div className="md:col-span-2">
             <Card 
               title="Historical Volatility" 
               value={backendData ? `${(backendData.historical_volatility * 100).toFixed(2)}%` : '---'} 
-              subtext="30-day realized vol from model"
+              subtext="Calculated from your model"
             />
           </div>
           <div className="md:col-span-2">
             <Card 
               title="Time Left to Expiry" 
               value={backendData ? backendData.time_to_expiry : '---'} 
-              subtext="Remaining duration in days"
+              subtext="Engine-calculated duration"
             />
           </div>
-          <Card title="Delta (Δ)" value={backendData ? backendData.delta.toFixed(4) : '---'} subtext="Price Sensitivity" />
-          <Card title="Gamma (Γ)" value={backendData ? backendData.gamma.toFixed(4) : '---'} subtext="Delta Acceleration" />
-          <Card title="Vega (ν)" value={backendData ? backendData.vega.toFixed(4) : '---'} subtext="Vol Sensitivity (per 1%)" />
-          <Card title="Theta (Θ)" value={backendData ? backendData.theta.toFixed(4) : '---'} subtext="Daily Time Decay" />
-          <Card title="Rho (ρ)" value={backendData ? backendData.rho.toFixed(4) : '---'} subtext="Interest Sensitivity" />
-          <Card title="Intrinsic Value" value={backendData ? `₹${Math.max(0, inputs.optionType === 'call' ? inputs.spot - inputs.strike : inputs.strike - inputs.spot).toFixed(2)}` : '---'} />
+          <Card title="Delta (Δ)" value={backendData ? backendData.delta.toFixed(4) : '---'} subtext="Spot Sensitivity" />
+          <Card title="Gamma (Γ)" value={backendData ? backendData.gamma.toFixed(4) : '---'} subtext="Delta Sensitivity" />
+          <Card title="Vega (ν)" value={backendData ? backendData.vega.toFixed(4) : '---'} subtext="Vol Sensitivity" />
+          <Card title="Theta (Θ)" value={backendData ? backendData.theta.toFixed(4) : '---'} subtext="Time Sensitivity" />
+          <Card title="Rho (ρ)" value={backendData ? backendData.rho.toFixed(4) : '---'} subtext="Rate Sensitivity" />
+          <Card title="Intrinsic Val" value={backendData ? `₹${Math.max(0, inputs.optionType === 'call' ? inputs.spot - inputs.strike : inputs.strike - inputs.spot).toFixed(2)}` : '---'} />
         </section>
 
-        {/* 3D Visualization Grid */}
-        <section className="grid grid-cols-1 xl:grid-cols-2 gap-8 mb-10">
-          <div className="bg-zinc-900/40 border border-zinc-800/60 rounded-2xl p-4 min-h-[420px] shadow-2xl" ref={chartsRef.delta}></div>
-          <div className="bg-zinc-900/40 border border-zinc-800/60 rounded-2xl p-4 min-h-[420px] shadow-2xl" ref={chartsRef.gamma}></div>
-          <div className="bg-zinc-900/40 border border-zinc-800/60 rounded-2xl p-4 min-h-[420px] shadow-2xl" ref={chartsRef.theta}></div>
-          <div className="bg-zinc-900/40 border border-zinc-800/60 rounded-2xl p-4 min-h-[420px] shadow-2xl" ref={chartsRef.vega}></div>
+        {/* 3D Visualizations */}
+        <section className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-3 min-h-[400px] shadow-lg shadow-black/40" ref={chartsRef.delta}></div>
+          <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-3 min-h-[400px] shadow-lg shadow-black/40" ref={chartsRef.gamma}></div>
+          <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-3 min-h-[400px] shadow-lg shadow-black/40" ref={chartsRef.theta}></div>
+          <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-3 min-h-[400px] shadow-lg shadow-black/40" ref={chartsRef.vega}></div>
         </section>
 
-        {/* Price Sensitivity Heatmap */}
-        <section className="bg-zinc-900/40 border border-zinc-800/60 rounded-2xl p-6 min-h-[520px] shadow-2xl" ref={chartsRef.heatmap}></section>
+        {/* Sensitivity Heatmap */}
+        <section className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-4 min-h-[500px] shadow-lg shadow-black/40" ref={chartsRef.heatmap}></section>
       </main>
     </div>
   );

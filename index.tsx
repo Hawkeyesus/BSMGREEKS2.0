@@ -1,11 +1,9 @@
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BSMInputs, BSMOutputs, OptionType } from './types';
-import { calculateBSM, generateSurfaceData, generateHeatmapData } from './mathUtils';
-import { GoogleGenAI } from "@google/genai";
+import { BSMInputs, BackendResponse } from './types';
+import { generateSurfaceData, generateHeatmapData } from './mathUtils';
 
-// Plotly is expected to be available on window from index.html script tag
 declare global {
   interface Window {
     Plotly: any;
@@ -13,33 +11,33 @@ declare global {
 }
 
 const DEFAULT_INPUTS: BSMInputs = {
-  ticker: 'AAPL',
-  strike: 150,
-  spot: 155,
+  ticker: 'RELIANCE',
+  strike: 2500,
+  spot: 2540,
   expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-  riskFreeRate: 0.05,
+  riskFreeRate: 0.07,
   dividendYield: 0.01,
   optionType: 'call',
-  volatility: 0.25,
+  volatility: 0.22,
 };
 
-const Card = ({ title, value, unit = "", subtext = "" }: { title: string; value: string | number; unit?: string; subtext?: string }) => (
-  <div className="bg-zinc-900/50 border border-zinc-800 p-4 rounded-xl shadow-sm">
-    <h3 className="text-zinc-400 text-xs font-medium uppercase tracking-wider mb-1">{title}</h3>
-    <div className="flex items-baseline gap-1">
-      <span className="text-2xl font-bold text-white">{value}</span>
-      <span className="text-zinc-500 text-sm">{unit}</span>
+const Card = ({ title, value, unit = "", subtext = "", highlight = false }: { title: string; value: string | number; unit?: string; subtext?: string; highlight?: boolean }) => (
+  <div className={`border p-4 rounded-xl shadow-sm transition-all h-full flex flex-col justify-between ${highlight ? 'bg-emerald-600/10 border-emerald-500/40 ring-1 ring-emerald-500/20' : 'bg-zinc-900/50 border-zinc-800 hover:border-zinc-700'}`}>
+    <div>
+      <h3 className={`text-[10px] font-bold uppercase tracking-widest mb-1 ${highlight ? 'text-emerald-400' : 'text-zinc-500'}`}>{title}</h3>
+      <div className="flex items-baseline gap-1">
+        <span className={`text-xl lg:text-2xl font-bold ${highlight ? 'text-white' : 'text-zinc-100'}`}>{value}</span>
+        <span className="text-zinc-500 text-xs">{unit}</span>
+      </div>
     </div>
-    {subtext && <p className="text-zinc-500 text-[10px] mt-1 italic">{subtext}</p>}
+    {subtext && <p className="text-zinc-600 text-[9px] mt-2 italic font-medium">{subtext}</p>}
   </div>
 );
 
 const App = () => {
   const [inputs, setInputs] = useState<BSMInputs>(DEFAULT_INPUTS);
-  const [histVol, setHistVol] = useState<number | null>(null);
-  const [isLoadingVol, setIsLoadingVol] = useState(false);
-
-  const outputs = useMemo(() => calculateBSM(inputs), [inputs]);
+  const [backendData, setBackendData] = useState<BackendResponse | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const chartsRef = {
     delta: useRef<HTMLDivElement>(null),
@@ -49,36 +47,56 @@ const App = () => {
     heatmap: useRef<HTMLDivElement>(null),
   };
 
-  const fetchHistoricalVolatility = async () => {
-    setIsLoadingVol(true);
-    try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: `What is the approximate current annualized historical volatility (30-day) for ${inputs.ticker}? Respond only with a single number representing the percentage, e.g., 0.25 for 25%. If unknown, return 0.30.`,
-      });
-      const vol = parseFloat(response.text?.trim() || "0.30");
-      if (!isNaN(vol)) {
-        setHistVol(vol);
-        setInputs(prev => ({ ...prev, volatility: vol }));
-      }
-    } catch (error) {
-      console.error("Failed to fetch volatility:", error);
-    } finally {
-      setIsLoadingVol(false);
-    }
-  };
-
+  // Sync with Python Backend
   useEffect(() => {
+    const syncBackend = async () => {
+      setIsSyncing(true);
+      try {
+        const response = await fetch('/api/calculate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ticker: inputs.ticker,
+            strike_price: inputs.strike,
+            spot_price: inputs.spot,
+            expiry_date: inputs.expiryDate,
+            risk_free_rate: inputs.riskFreeRate,
+            dividend_yield: inputs.dividendYield,
+            option_type: inputs.optionType
+          }),
+        });
+        if (response.ok) {
+          const data: BackendResponse = await response.json();
+          setBackendData(data);
+          // If backend calculates a specific volatility, we keep it in the input state for 3D visualization baselines
+          if (data.historical_volatility) {
+            setInputs(prev => ({ ...prev, volatility: data.historical_volatility }));
+          }
+        }
+      } catch (error) {
+        console.error("Backend communication error:", error);
+      } finally {
+        setIsSyncing(false);
+      }
+    };
+
+    const timer = setTimeout(syncBackend, 400); // Debounce for user typing
+    return () => clearTimeout(timer);
+  }, [inputs.ticker, inputs.strike, inputs.spot, inputs.expiryDate, inputs.riskFreeRate, inputs.dividendYield, inputs.optionType]);
+
+  // Handle Graph Rendering
+  useEffect(() => {
+    if (!backendData) return;
+
     const commonLayout = {
       autosize: true,
       paper_bgcolor: 'rgba(0,0,0,0)',
       plot_bgcolor: 'rgba(0,0,0,0)',
-      font: { color: '#a1a1aa', size: 10 },
+      font: { color: '#71717a', size: 10 },
       margin: { l: 0, r: 0, b: 0, t: 30 },
       scene: {
-        xaxis: { title: 'Spot Price', gridcolor: '#27272a' },
-        yaxis: { title: 'Time to Expiry (Y)', gridcolor: '#27272a' },
+        xaxis: { title: 'Spot Price (₹)', gridcolor: '#27272a' },
+        yaxis: { title: 'Time (Years)', gridcolor: '#27272a' },
         zaxis: { gridcolor: '#27272a' },
         camera: { eye: { x: 1.5, y: 1.5, z: 1.2 } }
       }
@@ -97,7 +115,7 @@ const App = () => {
           showscale: false
         }], {
           ...commonLayout,
-          title: { text: greek.charAt(0).toUpperCase() + greek.slice(1), font: { size: 14, color: '#fff' } }
+          title: { text: `3D ${greek.charAt(0).toUpperCase() + greek.slice(1)}`, font: { size: 12, color: '#e4e4e7' } }
         }, { responsive: true, displayModeBar: false });
       }
     });
@@ -113,144 +131,135 @@ const App = () => {
         reversescale: true,
       }], {
         ...commonLayout,
-        title: { text: 'Price Sensitivity: Spot vs Volatility', font: { size: 14, color: '#fff' } },
-        xaxis: { title: 'Underlying Spot Price' },
+        title: { text: 'Price Sensitivity: Spot vs Volatility', font: { size: 14, color: '#e4e4e7' } },
+        xaxis: { title: 'Underlying Spot (₹)' },
         yaxis: { title: 'Volatility (σ)' },
-        margin: { l: 60, r: 20, b: 60, t: 40 }
+        margin: { l: 60, r: 20, b: 50, t: 40 }
       }, { responsive: true, displayModeBar: false });
     }
-  }, [inputs]);
+  }, [backendData, inputs]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     setInputs(prev => ({
       ...prev,
-      [name]: type === 'number' || type === 'range' ? parseFloat(value) : value
+      [name]: type === 'number' ? parseFloat(value) : value
     }));
   };
 
   return (
-    <div className="flex flex-col lg:flex-row min-h-screen bg-zinc-950">
-      {/* Sidebar */}
-      <aside className="w-full lg:w-80 border-r border-zinc-800 bg-zinc-900/30 p-6 flex flex-col gap-6 overflow-y-auto">
+    <div className="flex flex-col lg:flex-row min-h-screen bg-[#09090b] text-zinc-100">
+      {/* Input Sidebar */}
+      <aside className="w-full lg:w-80 border-r border-zinc-800 bg-zinc-900/20 p-6 flex flex-col gap-6 overflow-y-auto">
         <div>
-          <h1 className="text-xl font-bold text-white mb-1">Black-Scholes Pro</h1>
-          <p className="text-zinc-500 text-xs italic">Advanced Options Analytics</p>
+          <h1 className="text-xl font-black tracking-tighter text-white mb-1">GREEKS PRO</h1>
+          <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest">Black-Scholes Analytics</p>
         </div>
 
         <div className="space-y-4">
           <div className="flex flex-col gap-1">
-            <label className="text-zinc-400 text-xs font-medium">Stock Ticker</label>
-            <div className="flex gap-2">
-              <input 
-                name="ticker" value={inputs.ticker} onChange={handleInputChange}
-                className="bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 w-full"
-              />
-              <button 
-                onClick={fetchHistoricalVolatility}
-                disabled={isLoadingVol}
-                className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-[10px] font-bold px-2 rounded uppercase tracking-tighter transition-colors"
-              >
-                {isLoadingVol ? '...' : 'Fetch Vol'}
-              </button>
-            </div>
+            <label className="text-zinc-500 text-[9px] font-bold uppercase tracking-wider">Stock Ticker</label>
+            <input name="ticker" value={inputs.ticker} onChange={handleInputChange} className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-emerald-500 outline-none transition-all" />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1">
-              <label className="text-zinc-400 text-xs font-medium">Spot Price</label>
-              <input type="number" name="spot" value={inputs.spot} onChange={handleInputChange} className="bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-sm" />
+              <label className="text-zinc-500 text-[9px] font-bold uppercase tracking-wider">Spot Price (₹)</label>
+              <input type="number" name="spot" value={inputs.spot} onChange={handleInputChange} className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-emerald-500 outline-none transition-all" />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-zinc-400 text-xs font-medium">Strike Price</label>
-              <input type="number" name="strike" value={inputs.strike} onChange={handleInputChange} className="bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-sm" />
+              <label className="text-zinc-500 text-[9px] font-bold uppercase tracking-wider">Strike Price (₹)</label>
+              <input type="number" name="strike" value={inputs.strike} onChange={handleInputChange} className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-emerald-500 outline-none transition-all" />
             </div>
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-zinc-400 text-xs font-medium">Date of Expiry</label>
-            <input type="date" name="expiryDate" value={inputs.expiryDate} onChange={handleInputChange} className="bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-sm" />
+            <label className="text-zinc-500 text-[9px] font-bold uppercase tracking-wider">Expiry Date</label>
+            <input type="date" name="expiryDate" value={inputs.expiryDate} onChange={handleInputChange} className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-emerald-500 outline-none transition-all" />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1">
-              <label className="text-zinc-400 text-xs font-medium">Risk Free Rate (%)</label>
-              <input type="number" step="0.001" name="riskFreeRate" value={inputs.riskFreeRate} onChange={handleInputChange} className="bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-sm" />
+              <label className="text-zinc-500 text-[9px] font-bold uppercase tracking-wider">Risk Free (%)</label>
+              <input type="number" step="0.001" name="riskFreeRate" value={inputs.riskFreeRate} onChange={handleInputChange} className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-emerald-500 outline-none transition-all" />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-zinc-400 text-xs font-medium">Dividend (%)</label>
-              <input type="number" step="0.001" name="dividendYield" value={inputs.dividendYield} onChange={handleInputChange} className="bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-sm" />
+              <label className="text-zinc-500 text-[9px] font-bold uppercase tracking-wider">Dividend (%)</label>
+              <input type="number" step="0.001" name="dividendYield" value={inputs.dividendYield} onChange={handleInputChange} className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-emerald-500 outline-none transition-all" />
             </div>
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-zinc-400 text-xs font-medium">Option Type</label>
-            <select name="optionType" value={inputs.optionType} onChange={handleInputChange} className="bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-sm appearance-none cursor-pointer">
-              <option value="call">Call</option>
-              <option value="put">Put</option>
+            <label className="text-zinc-500 text-[9px] font-bold uppercase tracking-wider">Option Type</label>
+            <select name="optionType" value={inputs.optionType} onChange={handleInputChange} className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-3 py-2 text-sm appearance-none focus:ring-1 focus:ring-emerald-500 outline-none cursor-pointer">
+              <option value="call">Call Option (CE)</option>
+              <option value="put">Put Option (PE)</option>
             </select>
-          </div>
-
-          <div className="flex flex-col gap-2 pt-4 border-t border-zinc-800">
-            <div className="flex justify-between items-center">
-              <label className="text-zinc-400 text-xs font-medium">Volatility Dragger (σ)</label>
-              <span className="text-blue-400 text-xs font-bold">{(inputs.volatility * 100).toFixed(1)}%</span>
-            </div>
-            <input 
-              type="range" name="volatility" min="0.01" max="2.0" step="0.01" 
-              value={inputs.volatility} onChange={handleInputChange}
-              className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
-            />
           </div>
         </div>
 
         <div className="mt-auto pt-6 border-t border-zinc-800">
-           {histVol !== null && (
-             <div className="text-[10px] text-zinc-500 space-y-1">
-               <div className="flex justify-between">
-                 <span>Reported Hist. Vol:</span>
-                 <span className="text-zinc-300 font-mono">{(histVol * 100).toFixed(2)}%</span>
-               </div>
-               <div className="flex justify-between">
-                 <span>Time to Expiry:</span>
-                 <span className="text-zinc-300 font-mono">{outputs.timeToExpiry.toFixed(4)} Y</span>
-               </div>
+           {isSyncing ? (
+             <div className="flex items-center gap-2 text-[10px] text-emerald-500 font-bold animate-pulse">
+               <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></div>
+               CALCULATING...
              </div>
+           ) : (
+             <div className="text-[10px] text-zinc-600 font-bold">ENGINE READY</div>
            )}
+           <p className="text-zinc-500 text-[10px] mt-2">Historical volatility and Greeks are derived from the connected Python model.</p>
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 p-6 overflow-y-auto">
-        {/* Output Row */}
-        <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
-          <div className="col-span-2 md:col-span-1 bg-blue-600/10 border border-blue-500/30 p-4 rounded-xl shadow-lg ring-1 ring-blue-500/20">
-            <h3 className="text-blue-400 text-xs font-semibold uppercase tracking-wider mb-1">Fair Price</h3>
-            <div className="flex items-baseline gap-1">
-              <span className="text-3xl font-black text-white">${outputs.price.toFixed(4)}</span>
-            </div>
+      {/* Main Content Area */}
+      <main className="flex-1 p-6 overflow-y-auto bg-zinc-950">
+        {/* Metric Grid */}
+        <section className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-4 mb-8">
+          <div className="md:col-span-2">
+            <Card 
+              title="Fair Price" 
+              value={backendData ? `₹${backendData.fair_price.toFixed(2)}` : '---'} 
+              highlight={true} 
+              subtext="Theoretical Black-Scholes Value"
+            />
           </div>
-          <Card title="Delta (Δ)" value={outputs.delta.toFixed(4)} subtext="Rate of change w.r.t Spot" />
-          <Card title="Gamma (Γ)" value={outputs.gamma.toFixed(4)} subtext="Rate of change w.r.t Delta" />
-          <Card title="Vega (ν)" value={outputs.vega.toFixed(4)} subtext="Sensitivity to Volatility" />
-          <Card title="Theta (Θ)" value={outputs.theta.toFixed(4)} subtext="Time decay (per day)" />
-          <Card title="Rho (ρ)" value={outputs.rho.toFixed(4)} subtext="Sensitivity to Interest Rates" />
+          <div className="md:col-span-2">
+            <Card 
+              title="Historical Volatility" 
+              value={backendData ? `${(backendData.historical_volatility * 100).toFixed(2)}%` : '---'} 
+              subtext="Realized volatility from backend"
+            />
+          </div>
+          <div className="md:col-span-2">
+            <Card 
+              title="Time to Expiry" 
+              value={backendData ? backendData.time_to_expiry : '---'} 
+              subtext="Duration until maturity"
+            />
+          </div>
+          <Card title="Delta (Δ)" value={backendData ? backendData.delta.toFixed(4) : '---'} subtext="Δ Price / Δ Spot" />
+          <Card title="Gamma (Γ)" value={backendData ? backendData.gamma.toFixed(4) : '---'} subtext="Δ Delta / Δ Spot" />
+          <Card title="Vega (ν)" value={backendData ? backendData.vega.toFixed(4) : '---'} subtext="Δ Price / Δ Vol" />
+          <Card title="Theta (Θ)" value={backendData ? backendData.theta.toFixed(4) : '---'} subtext="Time Decay" />
+          <Card title="Rho (ρ)" value={backendData ? backendData.rho.toFixed(4) : '---'} subtext="Interest Sensitivity" />
+          <Card title="Intrinsic Val" value={backendData ? `₹${Math.max(0, inputs.optionType === 'call' ? inputs.spot - inputs.strike : inputs.strike - inputs.spot).toFixed(2)}` : '---'} />
         </section>
 
-        {/* 3D Greeks Grid */}
-        <section className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-2 min-h-[350px]" ref={chartsRef.delta}></div>
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-2 min-h-[350px]" ref={chartsRef.gamma}></div>
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-2 min-h-[350px]" ref={chartsRef.theta}></div>
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-2 min-h-[350px]" ref={chartsRef.vega}></div>
+        {/* 3D Visualizations */}
+        <section className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-3 min-h-[380px]" ref={chartsRef.delta}></div>
+          <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-3 min-h-[380px]" ref={chartsRef.gamma}></div>
+          <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-3 min-h-[380px]" ref={chartsRef.theta}></div>
+          <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-3 min-h-[380px]" ref={chartsRef.vega}></div>
         </section>
 
-        {/* Heatmap Row */}
-        <section className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 min-h-[450px]" ref={chartsRef.heatmap}></section>
+        {/* Sensitivity Heatmap */}
+        <section className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-4 min-h-[480px]" ref={chartsRef.heatmap}></section>
       </main>
     </div>
   );
 };
 
-const root = createRoot(document.getElementById('root')!);
+const container = document.getElementById('root');
+const root = createRoot(container!);
 root.render(<App />);

@@ -1,0 +1,5 @@
+{
+  "name": "Copy of Black-Scholes Pro: Greeks & Volatility Dashboard",
+  "description": "An advanced financial engineering dashboard for option pricing and risk analysis. Features interactive 3D Greek surfaces, sensitivity heatmaps, and real-time BSM calculations based on the provided Python model.",
+  "requestFramePermissions": []
+}

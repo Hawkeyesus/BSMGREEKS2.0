@@ -39,12 +39,16 @@ def calculate_bsm():
     try:
         data = request.get_json()
         
+        # Log incoming request for debugging
+        print(f"Received request data: {data}")
+        
         # Validate required fields
         required_fields = ['ticker', 'spot_price', 'strike_price', 'expiry_date', 
                           'risk_free_rate', 'dividend_yield', 'option_type']
         
         missing_fields = [field for field in required_fields if field not in data]
         if missing_fields:
+            print(f"Missing fields: {missing_fields}")
             return jsonify({
                 'error': 'Missing required fields',
                 'missing': missing_fields

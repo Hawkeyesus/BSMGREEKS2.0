@@ -51,18 +51,20 @@ const App = () => {
     setIsSyncing(true);
     try {
       const apiUrl = import.meta.env.VITE_API_URL || '/api/calculate';
+      const payload = {
+        ticker: inputs.ticker,
+        strike_price: inputs.strike,
+        spot_price: inputs.spot,
+        expiry_date: inputs.expiryDate,
+        risk_free_rate: inputs.riskFreeRate,
+        dividend_yield: inputs.dividendYield,
+        option_type: inputs.optionType
+      };
+      console.log('Sending to backend:', apiUrl, payload);
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ticker: inputs.ticker,
-          strike_price: inputs.strike,
-          spot_price: inputs.spot,
-          expiry_date: inputs.expiryDate,
-          risk_free_rate: inputs.riskFreeRate,
-          dividend_yield: inputs.dividendYield,
-          option_type: inputs.optionType
-        }),
+        body: JSON.stringify(payload),
       });
       if (response.ok) {
         const data: BackendResponse = await response.json();
@@ -71,6 +73,9 @@ const App = () => {
         if (data.historical_volatility) {
           setInputs(prev => ({ ...prev, volatility: data.historical_volatility }));
         }
+      } else {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('Backend error response:', response.status, errorData);
       }
     } catch (error) {
       console.error("Backend communication error:", error);

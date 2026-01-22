@@ -50,7 +50,8 @@ const App = () => {
   const syncBackend = async () => {
     setIsSyncing(true);
     try {
-      const response = await fetch('/api/calculate', {
+      const apiUrl = import.meta.env.VITE_API_URL || '/api/calculate';
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

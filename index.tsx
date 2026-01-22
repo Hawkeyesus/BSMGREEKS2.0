@@ -11,7 +11,7 @@ declare global {
 }
 
 const DEFAULT_INPUTS: BSMInputs = {
-  ticker: 'RELIANCE',
+  ticker: 'RELIANCE.NS',
   strike: 2500,
   spot: 2540,
   expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
